@@ -16,13 +16,15 @@ spec:
         env: production
         tier: backend
     spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
       containers:
         - 
           args:
             - hasher.rb
           command:
             - ruby
-          image: library/ruby:latest
+          image: academiaonline/dockercoins-hasher:0.1
           name: hasher-container
           ports:
             - 
@@ -64,13 +66,15 @@ spec:
         env: production
         tier: backend
     spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
       containers:
         - 
           args:
             - rng.py
           command:
             - python
-          image: library/python:latest
+          image: academiaonline/dockercoins-rng:0.1
           name: rng-container
           ports:
             - 
@@ -113,13 +117,15 @@ spec:
         env: production
         tier: frontend
     spec:
+      imagePullSecrets:
+        - name: docker-academiaonline      
       containers:
         - 
           args:
             - webui.js
           command:
             - node
-          image: library/node:latest
+          image: academiaonline/dockercoins:2.4-webui
           name: webui-container
           ports:
             - 
@@ -127,11 +133,11 @@ spec:
               protocol: TCP
           volumeMounts:
             -
-              mountPath: /src/webui.js
-              name: hasher-volume
+              mountPath: /app/webui.js
+              name: webui-volume
               readOnly: true
               subPath: webui.js
-          workingDir: /src/
+          workingDir: /app/
       volumes:
         -
           configMap:
@@ -162,13 +168,15 @@ spec:
         env: production
         tier: backend
     spec:
+      imagePullSecrets:
+        - name: docker-academiaonline
       containers:
         - 
           args:
             - worker.py
           command:
             - python
-          image: library/python:latest
+          image: academiaonline/dockercoins-worker:0.2
           name: worker-container
           ports:
             - 
@@ -201,44 +209,90 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: worker
+      app: redis
       env: production
-      tier: backend
+      tier: database
   template:
     metadata:
       labels:
-        app: worker
+        app: redis
         env: production
-        tier: backend
+        tier: database
     spec:
       containers:
         - 
           args:
-            - worker.py
+            - redis-server
           command:
-            - python
-          image: library/python:latest
-          name: worker-container
+            - docker-entrypoint.sh
+          image: library/redis:latest
+          name: redis-container
           ports:
             - 
-              containerPort: 8080
+              containerPort: 6379
               protocol: TCP
           volumeMounts:
             -
-              mountPath: /src/worker.py
-              name: worker-volume
-              readOnly: true
-              subPath: worker.py
-          workingDir: /src/
-      volumes:
-        -
-          configMap:
-            defaultMode: 0400
-            items:
-              -
-                key: worker.py
-                mode: 0400
-                path: worker.py
-            name: worker-cm
-          name: worker-volume
+              mountPath: /data/
+              name: redis-volume
+              readOnly: false
+          workingDir: /data/
   volumeClaimTemplates:
+    - 
+      metadata:
+        name: redis-volume
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: gp2
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  ports:
+    -
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+  selector:
+    app: redis
+    env: production
+    tier: database
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rng
+spec:
+  ports:
+    -
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: rng
+    env: production
+    tier: backend
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hasher
+spec:
+  ports:
+    -
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: hasher
+    env: production
+    tier: backend
+  type: ClusterIP  
